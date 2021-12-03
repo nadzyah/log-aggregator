@@ -27,6 +27,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     install_requires=REQUIRED_PKG,
+    package_dir={"": "aggregator"}
     entry_points="""
         [console_scripts]
         log-aggregator=aggr_app:cli
