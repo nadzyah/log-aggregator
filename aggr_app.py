@@ -1,8 +1,4 @@
 """Log aggregator"""
-import sys
-sys.path.append('/home/nadzya/Apps/log-aggregator/')
-sys.path.append('/home/nadzya/Apps/log-anomaly-detector/')
-
 from aggregator.log_aggregator import Aggregator
 from anomaly_detector.config import Configuration
 
