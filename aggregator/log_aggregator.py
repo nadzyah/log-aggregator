@@ -104,3 +104,4 @@ class Aggregator:
         aggr_json = self.aggregated_logs_to_json(aggr_logs, logs_df)
         self._write_logs_to_mg(aggr_json)
         return aggr_json
+

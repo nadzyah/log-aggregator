@@ -31,7 +31,7 @@ def run(config_yaml):
     print(configs)
     for config in configs:
         aggr = Aggregator(config)
-        print(aggr.aggregator())
+        aggr.aggregator()
 
 if __name__ == "__main__":
     cli()
