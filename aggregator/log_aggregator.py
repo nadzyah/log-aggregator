@@ -92,6 +92,8 @@ class Aggregator:
 
     def aggregator(self):
         logs_df, logs_json = self._get_logs_from_mg()
+        if not logs_json:
+            return
         logs_list = list(logs_df["message"])
         w2v = W2VModel(self.config)
         vectors = w2v.get_vectors(logs_list)
