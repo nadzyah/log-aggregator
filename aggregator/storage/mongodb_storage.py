@@ -51,6 +51,12 @@ class MongoDBDataStorageSource(DataCleaner, MongoDBStorage):
             }
 
         mg_data = mg_data.find(query).sort(self.config.DATETIME_INDEX, -1).limit(storage_attribute.number_of_entries)
+        _LOGGER.info(
+            "Reading %d log entries in last %d seconds from %s",
+            mg_data.count(True),
+            storage_attribute.time_range,
+            self.MG_URI,
+        )
 
         self.mg.close()
 
@@ -59,6 +65,8 @@ class MongoDBDataStorageSource(DataCleaner, MongoDBStorage):
 
         mg_data = dumps(mg_data, sort_keys=False)
         mg_data_normalized = pandas.DataFrame(pandas.json_normalize(json.loads(mg_data)))
+        _LOGGER.info("%d logs loaded in from last %d seconds", len(mg_data_normalized),
+                     storage_attribute.time_range)
         self._preprocess(mg_data_normalized)
         return mg_data_normalized, json.loads(mg_data)
 
@@ -77,4 +85,5 @@ class MongoDBDataSink(DataCleaner, MongoDBStorage):
         """Store results back to MongoDB"""
         mg_target_db = self.mg[self.config.MG_TARGET_DB]
         mg_target_col = mg_target_db[self.config.MG_TARGET_COL]
+        _LOGGER.info("Inderting data to MongoDB.")
         mg_target_col.insert_many(data)
