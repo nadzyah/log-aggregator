@@ -55,7 +55,7 @@ class MongoDBDataStorageSource(DataCleaner, MongoDBStorage):
             "Reading %d log entries in last %d seconds from %s",
             mg_data.count(True),
             storage_attribute.time_range,
-            self.MG_URI,
+            self.config.MG_HOST,
         )
 
         self.mg.close()
