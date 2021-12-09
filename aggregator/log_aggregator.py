@@ -3,6 +3,7 @@ import logging
 import pandas as pd
 import numpy as np
 from sklearn.cluster import DBSCAN
+from pprint import pprint
 
 from anomaly_detector.storage.storage_attribute import MGStorageAttribute
 
@@ -17,7 +18,8 @@ class Aggregator:
     def __init__(self, config):
         self.config = config
         self.source_storage_catalog = {'mg': self._get_logs_from_mg}
-        self.sink_storage_catalog = {'mg': self._write_logs_to_mg}
+        self.sink_storage_catalog = {'mg': self._write_logs_to_mg,
+                                     "stdout": pprint}
 
     def _get_logs_from_mg(self):
         """Retrieve data from MongoDB
@@ -40,8 +42,8 @@ class Aggregator:
 
         :param timelist: the list of timestamps in absolute format
         """
-        mean = np.mean(time_list)
-        return datetime.datetime.fromtimestamp(mean / 1e3)
+        mean = int(np.mean(time_list))
+        return datetime.datetime.fromtimestamp(mean / 1e3) - datetime.timedelta(hours=3)
 
     def get_clusters(self, vectors):
         """Clusterize logs and return clusters array
@@ -61,6 +63,7 @@ class Aggregator:
         :param logs_json: list of logs in json format, where all logs are python dicts with "message" key
         :param clusters: list of integers which correspond cluster label of each logs message
 
+
         The number of rows in df, dicts in logs_json and integers in clusters must be the same
 
         Result example:
@@ -72,12 +75,14 @@ class Aggregator:
         aggregated = []
         for cluster in np.unique(clusters):
             messages = []
+            timestamps = []
             for i in list(df.loc[df['cluster'] == cluster].index):
                 messages.append(logs_json[i]["message"])
+                timestamps.append([logs_json[i][self.config.DATETIME_INDEX]["$date"]])
 
             if cluster == -1:
-                for msg in messages:
-                    aggregated.append((msg, 1, []))
+                for i in range(len(messages)):
+                    aggregated.append((messages[i], 1, timestamps[i], []))
             else:
                 splited_messages = [x.split() for x in messages]
                 splited_transpose = [list(row) for row in zip(*splited_messages)]
@@ -91,7 +96,10 @@ class Aggregator:
                         result_string += "***" + " "
 
                 msg_num = len(messages)
-                aggregated.append((result_string[:-1], msg_num, messages))
+
+                cluster_df = df.loc[df['cluster'] == cluster]
+                mean_time = self._get_mean_time(timestamps)
+                aggregated.append((result_string[:-1], msg_num, mean_time, messages))
                 _LOGGER.info("%s logs were aggregated into: %s", msg_num, result_string[:-1])
         return aggregated
 
@@ -105,11 +113,9 @@ class Aggregator:
 
         Return list of dicts with the log messages, which should be pushes to database
         """
-        dates = np.array(orig_df[self.config.DATETIME_INDEX + ".$date"]).astype(np.int64)
-        mean_time = self._get_mean_time(dates)
 
         result = []
-        for msg, total_num, messages in aggregated_logs:
+        for msg, total_num, mean_time, messages in aggregated_logs:
             data = {}
             data["message"] = msg
             data["total_logs"] = total_num
@@ -133,9 +139,12 @@ class Aggregator:
         logs_as_vectors = w2v.vectorized_logs_to_single_vectors(vectors)
         clusters = self.get_clusters(logs_as_vectors)
 
+        # Normalized logs with cluster lables as DF
         df = pd.DataFrame(list(zip(logs_list, clusters)),
                           columns =['message', 'cluster'])
+        # Aggregate logs
         aggr_logs = self.aggregate_logs(df, logs_json, clusters)
+        # Convert aggregated logs to json
         aggr_json = self.aggregated_logs_to_json(aggr_logs, logs_df)
         self.sink_storage_catalog[self.config.STORAGE_DATASINK](aggr_json)
         return aggr_json

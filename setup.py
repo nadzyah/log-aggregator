@@ -10,7 +10,7 @@ REQUIRED_PKG = [
 
 setup(
     name="log-aggregator",
-    version="0.1.0",
+    version="0.1.1",
     py_modules=['aggr_app'],
     packages=find_packages(),
     zip_safe=False,

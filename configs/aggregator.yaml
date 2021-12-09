@@ -1,5 +1,5 @@
 STORAGE_DATASOURCE: mg
-STORAGE_DATASINK: mg
+STORAGE_DATASINK: stdout
 MG_HOST: 172.17.18.83
 MG_PORT: 27017
 MG_USER: dbadmin
@@ -9,9 +9,9 @@ MG_CA_CERT: "/home/nadzya/Apps/log-aggregator/configs/LAD_CA.crt"
 MG_VERIFY_CERT: true
 MG_TARGET_DB: anomalydb
 MG_INPUT_COLS:
-  - web_anomaly
+  - network_anomaly
 MG_TARGET_COLS:
-  - web_aggregated
+  - network_aggregated
 DATETIME_INDEX: timestamp
 HOSTNAME_INDEX: hostname
 AGGR_TIME_SPAN: 1296000
