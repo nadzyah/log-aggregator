@@ -1,9 +1,4 @@
 """Test mean time"""
-
-#import sys
-#sys.path.extend(['/home/nadzya/Apps/log-anomaly-detector/',
-                 "/home/nadzya/Apps/log-aggregator"])
-
 import pytest
 import datetime
 from pprint import pprint

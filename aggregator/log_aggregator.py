@@ -74,15 +74,26 @@ class Aggregator:
         """
         aggregated = []
         for cluster in np.unique(clusters):
+            logs = []
             messages = []
             timestamps = []
+            anomaly_scores = []
             for i in list(df.loc[df['cluster'] == cluster].index):
+                logs.append({"anomaly_score": logs_json[i]["anomaly_score"],
+                             "host_ip": logs_json[i]["host_ip"],
+                             "hostname": logs_json[i]["hostname"],
+                             "message": logs_json[i]["message"],
+                             "timestamp": self._get_mean_time(logs_json[i]["timestamp"]["$date"])
+                             })
                 messages.append(logs_json[i]["message"])
                 timestamps.append([logs_json[i][self.config.DATETIME_INDEX]["$date"]])
+                anomaly_scores.append(logs_json[i]["anomaly_score"])
 
             if cluster == -1:
                 for i in range(len(messages)):
-                    aggregated.append((messages[i], 1, timestamps[i], []))
+                    aggregated.append((messages[i], 1,
+                                       self._get_mean_time(timestamps[i][0]),
+                                       anomaly_scores[i], []))
             else:
                 splited_messages = [x.split() for x in messages]
                 splited_transpose = [list(row) for row in zip(*splited_messages)]
@@ -99,11 +110,14 @@ class Aggregator:
 
                 cluster_df = df.loc[df['cluster'] == cluster]
                 mean_time = self._get_mean_time(timestamps)
-                aggregated.append((result_string[:-1], msg_num, mean_time, messages))
+                anomaly_score = np.mean(anomaly_scores)
+                aggregated.append((result_string[:-1], msg_num,
+                                   mean_time, anomaly_score,
+                                   logs))
                 _LOGGER.info("%s logs were aggregated into: %s", msg_num, result_string[:-1])
         return aggregated
 
-    def aggregated_logs_to_json(self, aggregated_logs, orig_df):
+    def aggregated_logs_to_json(self, aggregated_logs):
         """Format each message to list of dict with mean timestamp
 
         :param aggregated_logs: list of tuples (triplets) that represent message,
@@ -115,11 +129,12 @@ class Aggregator:
         """
 
         result = []
-        for msg, total_num, mean_time, messages in aggregated_logs:
+        for msg, total_num, mean_time, anomaly_score, messages in aggregated_logs:
             data = {}
             data["message"] = msg
             data["total_logs"] = total_num
             data["timestamp"] = mean_time
+            data["anomaly_score"] = anomaly_score
             data["was_added_at"] = datetime.datetime.now()
             if messages:
                 data["original_messages"] = messages
@@ -145,7 +160,7 @@ class Aggregator:
         # Aggregate logs
         aggr_logs = self.aggregate_logs(df, logs_json, clusters)
         # Convert aggregated logs to json
-        aggr_json = self.aggregated_logs_to_json(aggr_logs, logs_df)
+        aggr_json = self.aggregated_logs_to_json(aggr_logs)
         self.sink_storage_catalog[self.config.STORAGE_DATASINK](aggr_json)
         return aggr_json
 
