@@ -1,6 +1,6 @@
 STORAGE_DATASOURCE: mg
-STORAGE_DATASINK: stdout
-#STORAGE_DATASINK: mg
+#STORAGE_DATASINK: stdout
+STORAGE_DATASINK: mg
 MG_HOST: 172.17.18.83
 MG_PORT: 27017
 MG_USER: dbadmin
@@ -11,9 +11,11 @@ MG_VERIFY_CERT: true
 MG_TARGET_DB: anomalydb
 MG_INPUT_COLS:
   - utm_anomaly
+  - network_anomaly
   - web_anomaly
 MG_TARGET_COLS:
   - utm_aggregated
+  - network_aggregated
   - web_aggregated
 DATETIME_INDEX: timestamp
 HOSTNAME_INDEX: hostname

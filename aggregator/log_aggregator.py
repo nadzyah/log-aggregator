@@ -93,7 +93,8 @@ class Aggregator:
                 for i in range(len(messages)):
                     aggregated.append((messages[i], 1,
                                        self._get_mean_time(timestamps[i][0]),
-                                       anomaly_scores[i], []))
+                                       anomaly_scores[i],
+                                       logs[i]))
             else:
                 splited_messages = [x.split() for x in messages]
                 splited_transpose = [list(row) for row in zip(*splited_messages)]
