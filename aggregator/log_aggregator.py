@@ -77,22 +77,25 @@ class Aggregator:
             logs = []
             messages = []
             timestamps = []
+            hostnames = []
             anomaly_scores = []
             for i in list(df.loc[df['cluster'] == cluster].index):
                 logs.append({"anomaly_score": logs_json[i]["anomaly_score"],
-                             "host_ip": logs_json[i]["host_ip"],
-                             "hostname": logs_json[i]["hostname"],
-                             "message": logs_json[i]["message"],
-                             "timestamp": self._get_mean_time(logs_json[i]["timestamp"]["$date"])
+                             "hostname": logs_json[i][self.config.HOSTNAME_INDEX],
+                             "message": logs_json[i][self.config.MESSAGE_INDEX],
+                             "timestamp": self._get_mean_time(logs_json[i][self.config.DATETIME_INDEX]["$date"])
                              })
                 messages.append(logs_json[i]["message"])
                 timestamps.append([logs_json[i][self.config.DATETIME_INDEX]["$date"]])
+                hostnames.append(logs_json[i][self.config.HOSTNAME_INDEX])
                 anomaly_scores.append(logs_json[i]["anomaly_score"])
 
             if cluster == -1:
                 for i in range(len(messages)):
-                    aggregated.append((messages[i], 1,
+                    aggregated.append((messages[i],
+                                       1,
                                        self._get_mean_time(timestamps[i][0]),
+                                       hostnames[i],
                                        anomaly_scores[i],
                                        logs[i]))
             else:
@@ -112,8 +115,14 @@ class Aggregator:
                 cluster_df = df.loc[df['cluster'] == cluster]
                 mean_time = self._get_mean_time(timestamps)
                 anomaly_score = np.mean(anomaly_scores)
-                aggregated.append((result_string[:-1], msg_num,
-                                   mean_time, anomaly_score,
+                # The most frequent hostname
+                hostname = max(set(hostnames), key = hostnames.count)
+                
+                aggregated.append((result_string[:-1],
+                                   msg_num,
+                                   mean_time,
+                                   hostname,
+                                   anomaly_score,
                                    logs))
                 _LOGGER.info("%s logs were aggregated into: %s", msg_num, result_string[:-1])
         return aggregated
@@ -130,11 +139,12 @@ class Aggregator:
         """
 
         result = []
-        for msg, total_num, mean_time, anomaly_score, messages in aggregated_logs:
+        for msg, total_num, mean_time, hostname, anomaly_score, messages in aggregated_logs:
             data = {}
             data["message"] = msg
             data["total_logs"] = total_num
             data["timestamp"] = mean_time
+            data["hostname"] = hostname
             data["anomaly_score"] = anomaly_score
             data["was_added_at"] = datetime.datetime.now()
             if messages:
@@ -149,7 +159,7 @@ class Aggregator:
         if logs_df.empty:
             _LOGGER.info("No logs were detected")
             return
-        logs_list = list(logs_df["message"])
+        logs_list = list(logs_df[self.config.MESSAGE_INDEX])
         w2v = W2VModel(self.config)
         vectors = w2v.get_vectors(logs_list)
         logs_as_vectors = w2v.vectorized_logs_to_single_vectors(vectors)
