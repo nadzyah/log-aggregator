@@ -6,6 +6,7 @@ import ssl
 import os
 import logging
 from bson.json_util import dumps
+from bson.objectid import ObjectId
 from pandas.io.json import json_normalize
 import json
 from aggregator.datacleaner import DataCleaner
@@ -40,6 +41,7 @@ class MongoDBDataStorageSource(DataCleaner, MongoDBStorage):
                     '$gte': now - datetime.timedelta(seconds=storage_attribute.time_range),
                     '$lt': now
                 },
+                "is_anomaly": 1,
                 self.config.HOSTNAME_INDEX: self.config.LOGSOURCE_HOSTNAME
             }
         else:
@@ -47,7 +49,8 @@ class MongoDBDataStorageSource(DataCleaner, MongoDBStorage):
                 self.config.DATETIME_INDEX:  {
                     '$gte': now - datetime.timedelta(seconds=storage_attribute.time_range),
                     '$lt': now
-                }
+                },
+                "is_anomaly": 1
             }
 
         mg_data = mg_data.find(query).sort(self.config.DATETIME_INDEX, -1).limit(storage_attribute.number_of_entries)
@@ -81,9 +84,24 @@ class MongoDBDataSink(DataCleaner, MongoDBStorage):
         self.config = config
         MongoDBStorage.__init__(self, config)
 
-    def store_results(self, data):
+    def store_results(self, data, original_messages):
         """Store results back to MongoDB"""
+        mg_input_db = self.mg[self.config.MG_INPUT_DB]
+        mg_input_col = mg_input_db[self.config.MG_INPUT_COL]
         mg_target_db = self.mg[self.config.MG_TARGET_DB]
         mg_target_col = mg_target_db[self.config.MG_TARGET_COL]
         _LOGGER.info("Inderting data to MongoDB.")
-        mg_target_col.insert_many(data)
+        for aggr_data in data:
+            to_insert = aggr_data.copy()
+            del to_insert["original_msgs_ids"]
+            for _id in aggr_data["original_msgs_ids"]:
+                mg_input_col.update_one(
+                    {
+                        "_id": _id
+                     },
+                    {
+                        "$set": {
+                            "aggregated_message_id": aggr_data["_id"]
+                        }
+                    }, upsert=False)
+            mg_target_col.insert_one(to_insert)

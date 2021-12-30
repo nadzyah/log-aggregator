@@ -5,20 +5,18 @@ MG_HOST: 172.17.18.83
 MG_PORT: 27017
 MG_USER: dbadmin
 MG_PASSWORD: password123
-MG_INPUT_DB: anomalydb
+MG_INPUT_DB: fluentdb
 MG_CA_CERT: "/home/nadzya/Apps/log-aggregator/configs/LAD_CA.crt"
 MG_VERIFY_CERT: true
-MG_TARGET_DB: anomalydb
+MG_TARGET_DB: fluentdb
 MG_INPUT_COLS:
-  - utm_anomaly
-  - network_anomaly
-  - web_anomaly
+  - web_logs
 MG_TARGET_COLS:
-  - utm_aggregated
-  - network_aggregated
-  - web_aggregated
-DATETIME_INDEX: timestamp
+  - web_anomaly_logs
+DATETIME_INDEX: received_at
 HOSTNAME_INDEX: hostname
-AGGR_TIME_SPAN: 1296000
+MESSAGE_INDEX: message
+AGGR_TIME_SPAN: 12960000
+#AGGR_MAX_ENTRIES: 100
 AGGR_EPS: 0.01
 AGGR_MIN_SAMPLES: 2
