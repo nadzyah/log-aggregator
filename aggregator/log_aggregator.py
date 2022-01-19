@@ -6,8 +6,9 @@ from sklearn.cluster import DBSCAN
 from pprint import pprint
 from bson.objectid import ObjectId
 
-from anomaly_detector.storage.storage_attribute import MGStorageAttribute
+from anomaly_detector.storage.storage_attribute import MGStorageAttribute, MySQLStorageAttribute
 from aggregator.storage.mongodb_storage import MongoDBDataStorageSource, MongoDBDataSink
+from aggregator.storage.mysql_storage import MySQLDataStorageSource, MySQLDataSink, MySQLStorage
 from aggregator.datacleaner import DataCleaner
 from aggregator.models.word2vec import W2VModel
 
@@ -17,13 +18,16 @@ class Aggregator:
 
     def __init__(self, config):
         self.config = config
-        self.source_storage_catalog = {'mg': self._get_logs_from_mg}
+        self.source_storage_catalog = {'mg': self._get_logs_from_mg,
+                                       'mysql': self._get_logs_from_mysql,
+                                       }
         self.sink_storage_catalog = {'mg': self._write_logs_to_mg,
-                                     "stdout": print}
+                                     "stdout": pprint,
+                                     'mysql': self._write_logs_to_mysql,
+                                     }
 
     def _get_logs_from_mg(self):
-        """Retrieve data from MongoDB
-        """
+        """Retrieve data from MongoDB"""
         mg = MongoDBDataStorageSource(self.config)
         mg_attr = MGStorageAttribute(self.config.AGGR_TIME_SPAN,
                                      self.config.AGGR_MAX_ENTRIES)
@@ -34,16 +38,51 @@ class Aggregator:
 
         :param data: data in json format which should be pushed to DB
         """
-        mg = MongoDBDataSink(self.config)
+        mg = MongoDataSink(self.config)
         mg.store_results(data, original_messages)
+
+    def _get_logs_from_mysql(self):
+        """Retrieve data from MySQL"""
+        mysql = MySQLDataStorageSource(self.config)
+        mysql_attr = MySQLStorageAttribute(self.config.AGGR_TIME_SPAN,
+                                           self.config.AGGR_MAX_ENTRIES)
+        return mysql.retrieve(mysql_attr)
+
+    def _write_logs_to_mysql(self, data, original_messages):
+        """Write data to MongoDB
+
+        :param data: data in json format which should be pushed to DB
+        """
+        mg = MySQLDataSink(self.config)
+        mg.store_results(data, original_messages)
+
+
+    def _get_last_aggr_msg_id(self):
+        mysql = MySQLStorage(self.config, is_input=False)
+        sql = 'SELECT MAX(aggr_msg_id) FROM %s' % self.config.MYSQL_TARGET_TABLE
+        cursor = mysql.db.cursor()
+        data = cursor.execute(sql)
+        if data:
+            return data[0]
+        return 0
+
 
     def _get_mean_time(self, time_list):
         """Return mean time in ISO format
 
         :param timelist: the list of timestamps in absolute format
         """
+        if not isinstance(time_list, list):
+            return time_list
+        if not isinstance(time_list[0], int):
+            tmp = []
+            for x in time_list:
+                tmp.append(x.timestamp())
+            mean = float(np.mean(tmp))
+            return datetime.datetime.fromtimestamp(mean)
         mean = int(np.mean(time_list))
         return datetime.datetime.fromtimestamp(mean / 1e3) - datetime.timedelta(hours=3)
+
 
     def get_clusters(self, vectors):
         """Clusterize logs and return clusters array
@@ -74,6 +113,8 @@ class Aggregator:
         """
         aggregated = []
         logs_json_with_relation = logs_json.copy()
+        mysql_id_incr = 1
+        last_aggr_msg_id = self._get_last_aggr_msg_id()
         for cluster in np.unique(clusters):
             logs = []
             messages = []
@@ -82,27 +123,49 @@ class Aggregator:
             anomaly_scores = []
             original_msgs_ids = []
             for i in list(df.loc[df['cluster'] == cluster].index):
-                logs.append({"anomaly_score": logs_json[i]["anomaly_score"],
-                             "hostname": logs_json[i][self.config.HOSTNAME_INDEX],
-                             "message": logs_json[i][self.config.MESSAGE_INDEX],
-                             "timestamp": self._get_mean_time(logs_json[i][self.config.DATETIME_INDEX]["$date"])
-                             })
+                if self.config.STORAGE_DATASINK == 'mg':
+                    logs.append({"anomaly_score": logs_json[i]["anomaly_score"],
+                                 "hostname": logs_json[i][self.config.HOSTNAME_INDEX],
+                                 "message": logs_json[i][self.config.MESSAGE_INDEX],
+                                 "timestamp": self._get_mean_time(logs_json[i][self.config.DATETIME_INDEX]["$date"])
+                                 })
+                    timestamps.append([logs_json[i][self.config.DATETIME_INDEX]["$date"]])
+                    original_msgs_ids.append(ObjectId(logs_json[i]["_id"]["$oid"]))
+                elif self.config.STORAGE_DATASINK == 'mysql':
+                    logs.append({"anomaly_score": logs_json[i]["anomaly_score"],
+                                 "hostname": logs_json[i][self.config.HOSTNAME_INDEX],
+                                 "message": logs_json[i][self.config.MESSAGE_INDEX],
+                                 "timestamp": self._get_mean_time(logs_json[i][self.config.DATETIME_INDEX])
+                                 })
+                    timestamps.append(logs_json[i][self.config.DATETIME_INDEX])
+                    original_msgs_ids.append(logs_json[i]["logid"])
+
                 messages.append(logs_json[i]["message"])
-                timestamps.append([logs_json[i][self.config.DATETIME_INDEX]["$date"]])
                 hostnames.append(logs_json[i][self.config.HOSTNAME_INDEX])
                 anomaly_scores.append(logs_json[i]["anomaly_score"])
-                original_msgs_ids.append(ObjectId(logs_json[i]["_id"]["$oid"]))
+
 
             if cluster == -1:
                 for i in range(len(messages)):
-                    aggregated.append((ObjectId(),
-                                       messages[i],
-                                       1,
-                                       self._get_mean_time(timestamps[i][0]),
-                                       hostnames[i],
-                                       anomaly_scores[i],
-                                       [original_msgs_ids[i]],
-                                       ))
+                    if self.config.STORAGE_DATASINK == 'mg':
+                        aggregated.append((ObjectId(),
+                                           messages[i],
+                                           1,
+                                           self._get_mean_time(timestamps[i]),
+                                           hostnames[i],
+                                           anomaly_scores[i],
+                                           [original_msgs_ids[i]],
+                                           ))
+                    elif self.config.STORAGE_DATASINK == 'mysql':
+                        aggregated.append((last_aggr_msg_id + mysql_id_incr,
+                                           messages[i],
+                                           1,
+                                           self._get_mean_time(timestamps[i]),
+                                           hostnames[i],
+                                           anomaly_scores[i],
+                                           [original_msgs_ids[i]],
+                                           ))
+                        mysql_id_incr += 1
             else:
                 splited_messages = [x.split() for x in messages]
                 splited_transpose = [list(row) for row in zip(*splited_messages)]
@@ -123,13 +186,25 @@ class Aggregator:
                 # The most frequent hostname
                 hostname = max(set(hostnames), key = hostnames.count)
 
-                aggregated.append((ObjectId(),
-                                   result_string[:-1],
-                                   msg_num,
-                                   mean_time,
-                                   hostname,
-                                   anomaly_score,
-                                   original_msgs_ids))
+                if self.config.STORAGE_DATASINK == 'mg':
+                    aggregated.append((ObjectId(),
+                                       result_string[:-1],
+                                       msg_num,
+                                       mean_time,
+                                       hostname,
+                                       anomaly_score,
+                                       original_msgs_ids))
+
+                elif self.config.STORAGE_DATASINK == 'mysql':
+                    aggregated.append((last_aggr_msg_id + mysql_id_incr,
+                                       result_string[:-1],
+                                       msg_num,
+                                       mean_time,
+                                       hostname,
+                                       anomaly_score,
+                                       original_msgs_ids))
+                    mysql_id_incr += 1
+
                 _LOGGER.info("%s logs were aggregated into: %s", msg_num, result_string[:-1])
         return aggregated
 
@@ -148,13 +223,16 @@ class Aggregator:
         for (_id, msg, total_num, mean_time,
              hostname, anomaly_score, original_msgs_ids) in aggregated_logs:
             data = {}
-            data["_id"] = _id
+            if self.config.STORAGE_DATASINK == 'mg':
+                data["_id"] = _id
+            if self.config.STORAGE_DATASINK == 'mysql':
+                data["aggr_msg_id"] = _id
             data["message"] = msg
             data["total_logs"] = total_num
-            data["average_datetime"] = mean_time
-            data["most_frequent_hostname"] = hostname
+            data["average_datetime"] = "'" +  mean_time.strftime("%Y-%m-%d %H:%M:%S") + "'"
+            data["hostname"] = hostname
             data["average_anomaly_score"] = anomaly_score
-            data["was_added_at"] = datetime.datetime.now()
+            data["was_added_at"] = "'" + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "'"
             data["original_msgs_ids"] = original_msgs_ids
             result.append(data)
         return result

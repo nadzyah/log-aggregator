@@ -41,7 +41,6 @@ class MongoDBDataStorageSource(DataCleaner, MongoDBStorage):
                     '$gte': now - datetime.timedelta(seconds=storage_attribute.time_range),
                     '$lt': now
                 },
-                "is_anomaly": 1,
                 self.config.HOSTNAME_INDEX: self.config.LOGSOURCE_HOSTNAME
             }
         else:
@@ -49,8 +48,7 @@ class MongoDBDataStorageSource(DataCleaner, MongoDBStorage):
                 self.config.DATETIME_INDEX:  {
                     '$gte': now - datetime.timedelta(seconds=storage_attribute.time_range),
                     '$lt': now
-                },
-                "is_anomaly": 1
+                }
             }
 
         mg_data = mg_data.find(query).sort(self.config.DATETIME_INDEX, -1).limit(storage_attribute.number_of_entries)
