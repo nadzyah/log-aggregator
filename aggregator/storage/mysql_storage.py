@@ -153,7 +153,7 @@ class MySQLDataSink(StorageSink, DataCleaner, MySQLStorage):
         for aggr_data in data:
             to_insert = aggr_data.copy()
             del to_insert["original_msgs_ids"]
-            to_insert["message"] = "'" + to_insert["message"] + "'"
+            to_insert["message"] = "'" + to_insert["message"].replace("'", "\\'") + "'"
             to_insert["hostname"] = "'" + to_insert["hostname"] + "'"
 
             insert_sql= "INSERT INTO " + self.config.MYSQL_TARGET_TABLE
