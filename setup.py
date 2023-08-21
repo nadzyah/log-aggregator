@@ -5,7 +5,7 @@ long_description = "Log Aggregator - Machine learning to aggregate abnormal even
 
 
 REQUIRED_PKG = [
-    "log-anomaly-detector @ git+http://git.solidex.by:3000/nhryshalevich/log-anomaly-detector",
+    "log-anomaly-detector @ git+https://github.com/nadzyah/log-anomaly-detector",
 ]
 
 setup(
